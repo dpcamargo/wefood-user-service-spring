@@ -1,660 +1,268 @@
-# Pós Tech FIAP - Tech Challenge
+# WeFood User Service
 
-## Architecture and Java Development
+## Purpose
 
-### WeFood - Restaurant Management System
+A user-management backend for a multi-restaurant food ordering platform
+("WeFood"): registration, authentication, profile lookup/update, and
+soft-deletion, with three roles (`ADMIN`, `RESTAURANT_OWNER`, `CUSTOMER`)
+and role/ownership-aware access control. Built as a Hexagonal/Clean
+Architecture Spring Boot service — business rules live in a
+framework-independent core, with REST, persistence and security wired in
+as adapters around it.
 
----
+- Self-registration (anyone can create a `CUSTOMER` account; only an
+  `ADMIN` can create `RESTAURANT_OWNER`/`ADMIN` accounts).
+- JWT-based login; stateless sessions.
+- Per-user access control: a user can read/update/delete their own record;
+  an admin can act on any user; role changes on update require admin.
+- Paginated user listing (admin-only).
+- Soft deletion (`is_deleted` flag + a Hibernate filter), so deleted users
+  disappear from queries without losing the row.
 
-## Overview
+## Technologies
 
-The **Tech Challenge** is a hands-on project from FIAP’s postgraduate course in Java Architecture and Development, aiming to create a restaurant management system, developed in phases.
-
-> **Main goal:**
-> Allow multiple restaurants to use a single, efficient system, reducing costs and offering a great experience for restaurants and customers alike.
-
----
-
-## Phase 1 Objective
-
-Develop a robust and complete backend using **Spring Boot**, focused on user management. The implemented operations include:
-
-- User creation
-- User data updating
-- User deletion
-- Login validation
-
-The project is Docker-ready, uses Docker Compose for orchestration, and is integrated with a relational database (PostgreSQL or H2).
-
----
-
-## Features
-
-### User Management
-
-- **Registration fields:**
-  - User:
-      - Name (`String`)
-      - Email (`String`)
-      - Username (`String`)
-      - Password (`String`)
-      - Role (`Enum`)
-      - Last update date (`Date`)
-      - Address (`Address`)
-        - Street (`String`)
-        - Number (`String`)
-        - Complement (`String`)
-        - City (`String`)
-        - State (`String`)
-
-- **Password change**: Users can change their passwordEncoder.
-- **Login validation**: Checks user credentials.
-- **User deletion**: Remove registered users.
-
-### User Roles
-
-- Restaurant Owner
-- Customer
-- Admin
-
----
+- **Java 21** / **Spring Boot 3.4**
+- **Spring Web** — REST controllers (`AuthController`, `UserController`)
+- **Spring Security** + **jjwt** — stateless JWT authentication, method
+  security (`@PreAuthorize`), BCrypt password hashing
+- **Spring Data JPA** / **Hibernate** — persistence, with a `deletedFilter`
+  Hibernate filter for soft deletion
+- **PostgreSQL** (via `docker-compose-postgres.yaml`) or **H2** in-memory
+  (via `docker-compose-h2.yaml`) — swappable via Spring profiles
+- Manual mappers (`UserMapper`, `AddressMapper`) — domain ↔ DTO ↔ JPA
+  entity translation at each architectural boundary
+- **springdoc-openapi** — Swagger UI + OpenAPI docs
+- **JUnit 5** + **Mockito** + **Testcontainers** — unit and integration tests
+- **Docker** / **Docker Compose** — containerized app + database
+- **Postman** — a ready-made collection (`postman/WeFood.json`) covering
+  every endpoint as both admin and regular user
 
 ## Architecture
 
-The backend is developed in **Spring Boot**, follows **SOLID** principles, and uses **Hexagonal Architecture** and **Clean Architecture**.
-*Business rules are isolated from external dependencies.*
+```mermaid
+flowchart TB
+    Client[HTTP Client] --> Auth[AuthController<br/>POST /login]
+    Client --> UC[UserController<br/>GET/POST/PUT/DELETE /users]
 
-## Modular Design
+    Auth --> AM[AuthenticationManager]
+    AM --> UDS[MyUserDetailsService]
+    Auth --> JwtUtil[JwtUtil<br/>sign/verify HS256]
 
-> Communication between modules is done via interfaces, so each module can be developed and tested independently.
-
-## Key Modules
-
-- <b>infrastructure/config:</b>
-    - <b>SwaggerConfig</b> - API documentation configuration (Swagger/OpenAPI)
-    - <b>AdminUserInitializer</b> - Initializes admin user(s) at startup
-
-- <b>adapters/inbound/controller:</b>
-    - <b>AuthController</b> - Handles POST /login (JWT authentication)
-    - <b>UserController</b> - Handles GET, POST, PUT, DELETE /users endpoints for user management with access control
-
-- <b>domain/user:</b>
-    - <b>User</b> - Main user domain model/entity
-    - <b>Id, Name, Email, Username, Password</b> - Value objects or user fields
-    - <b>Role</b> - User role enum (ADMIN, CUSTOMER, etc)
-    - <b>Address</b> - Value object/entity for user addresses
-
-- <b>dto:</b>
-    - <b>UserDtoRequest</b> - Used for creating/updating a user (client → server)
-    - <b>UserDtoResponse</b> - Used in user API responses (server → client)
-    - <b>AddressDto</b> - Used as part of the address payload
-
-- <b>infrastructure/exceptions:</b>
-    - <b>ApiError</b> - Standard API error response body
-    - <b>GlobalExceptionHandler</b> - Handles and maps exceptions to HTTP responses
-    - <b>UserAlreadyExistsException, UserNotFoundException</b> - Specific domain exceptions
-
-- <b>utils/mapper:</b>
-    - <b>UserMapper</b> - Maps between User/UserDto and entity/domain
-    - <b>AddressMapper</b> - Maps between Address/AddressDto and entity/domain
-
-- <b>adapters/outbound/repositories/entities:</b>
-    - <b>JpaUserEntity, JpaAddressEntity</b> - JPA entity mappings for persistence
-- <b>adapters/outbound/repositories:</b>
-    - <b>JpaUserRepository</b> - Spring Data repository interface
-    - <b>UserRepositoryImpl</b> - Implementation for domain persistence
-
-- <b>adapters/outbound/password:</b>
-    - <b>BcryptPasswordEncoderEncoderAdapter, PasswordEncoder</b> - Password hashing/encoding abstractions
-
-- <b>security:</b>
-    - <b>SecurityConfig</b> - Overall security configuration (roles, HTTP security)
-    - <b>JwtAuthenticationFilter</b> - Parses JWT from requests
-    - <b>JwtUtil</b> - Signs, validates, and extracts claims from JWTs
-    - <b>MyUserDetails</b> - Custom user principal for Spring Security
-    - <b>MyUserDetailsService</b> - Loads users for authentication
-    - <b>SecurityExceptionHandlerConfig</b> - Security-specific exception handling
-    - <b>SecurityUtil</b> - Helper methods for current authentication
-
-- <b>application/usecases:</b>
-    - <b>UserUseCase</b> - Use case/service interface
-    - <b>UserUsecaseImpl</b> - Main business service implementation
-
----
-
-## 🛠️ Technology Stack
-
-- **Java 21**
-- **Spring Boot** (core app)
-- **Spring Data JPA** (data access)
-- **Spring Security** (auth/authz)
-- **H2** / **PostgreSQL** (databases)
-- **Docker** / **Docker Compose**
-- **MapStruct** (object mapping)
-- **Swagger** (API docs)
-- **Mockito** (mocking)
-- **JUnit 5** (tests)
-- **Postman** (manual API testing)
-
----
-
-## 🔧 Configurations
-
-- **Default Admin User:**
-    - `login`: `admin`
-    - `passwordEncoder`: Value from `admin.passwordEncoder` in `application.properties`
-
-- **JWT Secret:**
-    - Value from `jwt.secret` in `application.properties`
-
-- **Database:**
-  - Env`SPRING_PROFILES_ACTIVE=postgres` to use PostgreSQL
-  - Env`SPRING_PROFILES_ACTIVE=h2` to use in memory H2
----
-
-## 🚀 Running the Project
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/dpcamargo/fiap-wefood.git
+    UC --> JwtFilter[JwtAuthenticationFilter]
+    JwtFilter --> SecCtx[SecurityContext]
+    UC --> UseCase[UserUsecaseImpl]
+    UseCase --> SecUtil[SecurityUtil<br/>isAdmin / getUserId]
+    UseCase --> Repo[(UserRepositoryImpl)]
+    Repo --> DB[(PostgreSQL / H2)]
+    UseCase --> Encoder[BCryptPasswordEncoder]
 ```
 
-### 2. Go to the Project Directory
+Dependencies point inward: `UserController`/`AuthController` (inbound
+adapters) depend on `UserUseCase`/`JwtUtil`; `UserUsecaseImpl` (the
+application core) depends only on the `UserRepository` and
+`PasswordEncoder` *interfaces*; `UserRepositoryImpl` and
+`BcryptPasswordEncoderEncoderAdapter` (outbound adapters) implement those
+interfaces against JPA/Hibernate and Spring Security's BCrypt,
+respectively. The domain (`User`, `Address`, `Role`) has no framework
+imports at all.
 
-```bash
-cd wefood
+## Execution flow
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant F as JwtAuthenticationFilter
+    participant UC as UserController
+    participant S as UserUsecaseImpl
+    participant SU as SecurityUtil
+    participant R as UserRepositoryImpl
+    participant DB as Database
+
+    C->>F: GET /users/{id} (Authorization: Bearer <jwt>)
+    F->>F: parse + validate JWT
+    F->>F: load UserDetails, populate SecurityContext
+    F->>UC: forward request (now authenticated)
+    UC->>S: getUserById(id)
+    S->>SU: getUserId() / isAdmin()
+    SU-->>S: current principal's id + role
+    alt not self and not admin
+        S-->>UC: throw AccessDeniedException
+        UC-->>C: 403 Forbidden
+    else authorized
+        S->>R: findById(id)
+        R->>DB: SELECT ... WHERE id = ? AND is_deleted = false
+        DB-->>R: user row (or none)
+        R-->>S: Optional<User>
+        S-->>UC: User / not-found
+        UC-->>C: 200 OK (UserDtoResponse) / 404
+    end
 ```
 
-### 3. Start WeFood
+1. Every request to a protected endpoint passes through
+   `JwtAuthenticationFilter`, which parses the `Authorization` header, and
+   — if the token is present and valid — populates Spring Security's
+   `SecurityContext` with the authenticated principal and role before the
+   request reaches the controller.
+2. Spring Security's `authorizeHttpRequests` config requires authentication
+   for every endpoint except `POST /login`, `POST /users`
+   (self-registration) and the docs/console paths — so a missing or
+   invalid token is rejected with 401 before any controller code runs.
+3. The controller delegates to `UserUsecaseImpl`, which asks `SecurityUtil`
+   for the current principal's id and role and enforces the
+   ownership/role rule for that specific operation (e.g. "same user or
+   admin") — a second, defense-in-depth layer on top of the HTTP-level
+   check.
+4. `UserRepositoryImpl` applies a Hibernate `deletedFilter` on every query
+   so soft-deleted users are invisible to normal reads, then maps the JPA
+   entity back to the domain `User` via `UserMapper`.
+5. Passwords are only ever handled through the `PasswordEncoder` interface
+   (BCrypt underneath); plaintext passwords never reach persistence.
 
-```bash
-docker-compose -f docker-compose-h2.yaml up -d
-````
-or
-```
-docker-compose -f docker-compose-postgres.yaml up -d
-```
+## Running it
 
-### 4. Import Collection
-
-```bash
-Import Postman Collection from /postman/WeFood.json
-```
-
----
-
-## 📁 Project Structure
-
-```plaintext
-wefood/
-├── Dockerfile             
-├── docker-compose-h2.yaml       
-├── docker-compose-postgres.yaml
-├── docs/
-│   └── ..
-├── postman/
-│   └── WeFood.json
-├── README.md
-└── src/
-    ├── main/
-    │   ├── java/
-    │   │   └── br/com/fiap/wefood/
-    │   │       ├── adapters/
-    │   │       │   ├── inbound/controller/
-    │   │       │   │   ├── AuthController.java
-    │   │       │   │   └── UserController.java
-    │   │       │   └── outbound/
-    │   │       │       ├── password/
-    │   │       │       └── repositories/
-    │   │       │           ├── entities/
-    │   │       │           │   ├── JpaAddressEntity.java
-    │   │       │           │   └── JpaUserEntity.java
-    │   │       │           ├── JpaUserRepository.java
-    │   │       │           └── UserRepositoryImpl.java
-    │   │       ├── application/usecases/
-    │   │       │   ├── UserUseCase.java
-    │   │       │   └── UserUsecaseImpl.java
-    │   │       ├── domain/user/
-    │   │       │   ├── Address.java
-    │   │       │   ├── Role.java
-    │   │       │   ├── User.java
-    │   │       │   └── UserRepository.java
-    │   │       ├── dto/
-    │   │       │   ├── AddressDto.java
-    │   │       │   ├── UserDtoRequest.java
-    │   │       │   └── UserDtoResponse.java
-    │   │       ├── infrastructure/
-    │   │       │   ├── config/
-    │   │       │   │   ├── AdminUserInitializer.java
-    │   │       │   │   └── SwaggerConfig.java
-    │   │       │   └── exceptions/
-    │   │       │       ├── ApiError.java
-    │   │       │       ├── GlobalExceptionHandler.java
-    │   │       │       ├── UserAlreadyExistsException.java
-    │   │       │       └── UserNotFoundException.java
-    │   │       ├── security/
-    │   │       │   ├── JwtAuthenticationFilter.java
-    │   │       │   ├── JwtUtil.java
-    │   │       │   ├── MyUserDetails.java
-    │   │       │   ├── MyUserDetailsService.java
-    │   │       │   ├── SecurityConfig.java
-    │   │       │   ├── SecurityExceptionHandlerConfig.java
-    │   │       │   └── SecurityUtil.java
-    │   │       ├── utils/mapper/
-    │   │       │   ├── AddressMapper.java
-    │   │       │   └── UserMapper.java
-    │   │       └── WefoodApplication.java
-    │   └── resources/
-    │       ├── application.properties
-    │       ├── application-h2.properties
-    │       ├── application-postgres.properties
-    │       ├── static/
-    │       └── templates/
-    └── test/java/br/com/fiap/wefood/
+```sh
+docker compose -f docker-compose-h2.yaml up -d --build     # in-memory H2, zero setup
+# or
+docker compose -f docker-compose-postgres.yaml up -d --build  # PostgreSQL
 ```
 
----
+Override the committed local-dev defaults for anything beyond local
+development — `JWT_SECRET` and `ADMIN_PASSWORD` are read from the
+environment if set (`JWT_SECRET=... ADMIN_PASSWORD=... docker compose ... up`);
+both compose files pass them through to the container.
+
+- App: `http://localhost:8080`
+- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
+- OpenAPI docs: `http://localhost:8080/v3/api-docs`
+- Postman collection: `postman/WeFood.json`
+- Default admin: username `admin`, password `Password1@` (or
+  `ADMIN_PASSWORD` if set)
+
+## Testing
+
+```sh
+./gradlew test
+```
+
+`UserControllerTest` and `JwtAuthenticationFilterTest` are plain Mockito
+unit tests (no Spring context or database) covering the pagination
+default in `UserController` and `JwtAuthenticationFilter`'s handling of
+malformed/missing bearer tokens. `WefoodApplicationTests` is the existing
+Spring context smoke test.
+
+## Metrics
+
+Measured against the H2-profile container (`docker-compose-h2.yaml`) with
+[`hey`](https://github.com/rakyll/hey), Apple M1, to compare two request
+types that stress different layers of the stack:
+
+```sh
+hey -z 10s -c 10 -m POST -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"Password1@"}' http://localhost:8080/login
+hey -z 10s -c 20 -H "Authorization: Bearer <token>" "http://localhost:8080/users/<id>"
+```
+
+| Endpoint | req/sec | avg latency | p50 | p90 | p99 |
+|---|---:|---:|---:|---:|---:|
+| `POST /login` (BCrypt verify, c=10) | ~44 | 225 ms | 229 ms | 261 ms | 298 ms |
+| `GET /users/{id}` (JWT verify + DB read, c=20) | ~1,278 | 15.6 ms | 13.7 ms | 28.0 ms | 45.3 ms |
+
+The ~29x latency gap between the two is almost entirely BCrypt: it's
+deliberately slow (adaptive work-factor hashing, the default Spring
+`BCryptPasswordEncoder` strength), by design, to make brute-forcing stolen
+password hashes expensive — the same property that makes login the
+service's throughput ceiling under concurrent load. `GET /users/{id}`, by
+contrast, only pays for JWT signature verification (HMAC-SHA256, cheap)
+plus a single indexed-PK read, so it's nearly two orders of magnitude
+faster. This is the expected, correct shape for an auth-gated CRUD
+service: the deliberately expensive operation is the one an attacker would
+want to brute-force, not the one legitimate traffic calls on every
+request.
+
+### Tradeoff: HTTP-level authorization vs. per-use-case ownership checks
+
+Two layers enforce access control here, deliberately:
+
+| Layer | What it enforces | What it can't do alone |
+|---|---|---|
+| Spring Security `authorizeHttpRequests` (HTTP layer) | "Is there a valid JWT at all?" — a blanket authentication requirement per path, independent of business rules | Can't express "only the owner or an admin" — that's a runtime decision based on *which* user and *which* resource |
+| `UserUsecaseImpl` + `SecurityUtil` (application layer) | Per-operation rules: same-user-or-admin for get/update/delete, admin-only for list, role-restricted for create | If this were the *only* layer, any endpoint added later without an explicit check defaults to open — there's no fallback deny |
+
+Relying on only one of these is the common failure mode: HTTP-only misses
+per-resource ownership; usecase-only means a forgotten check on a new
+endpoint is silently wide open rather than silently closed. Both layers
+being present means the failure mode for a missing check becomes "401 by
+default" rather than "no auth at all."
+
+### Tradeoff: soft delete vs. hard delete
+
+`UserRepositoryImpl.delete` sets an `is_deleted` flag rather than removing
+the row, and every read path applies a Hibernate `@Filter` to exclude
+soft-deleted rows:
+
+| Approach | Pros | Cons |
+|---|---|---|
+| Soft delete (used here) | Deleted users' data survives for auditing/recovery; foreign keys from orders/reviews elsewhere in the platform don't dangle | Every query needs the filter enabled or it leaks deleted rows; unique constraints (e.g. username/email) still see the "deleted" row, so a deleted username can't be immediately reused without extra handling |
+| Hard delete | Simpler queries, no filter to forget, unique constraints behave intuitively | Deleting a user leaves order/review history pointing at nothing (or needs explicit cascade/anonymization everywhere else in the platform); audit history is lost |
+
+For a multi-restaurant platform where other services (orders, reviews)
+will eventually reference `User` by id, soft delete is the right default
+even though it pushes a small amount of query discipline onto every
+repository method.
 
 ## Endpoints
 
-- Postman collection: `/postman/wefood.json`
-- Application: [http://localhost:8080](http://localhost:8080)
-- Swagger UI: [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)
-- OpenAPI Docs: [http://localhost:8080/api-docs](http://localhost:8080/api-docs)
+- Postman collection: `postman/WeFood.json`
+- Swagger UI: `http://localhost:8080/swagger-ui/index.html`
+- OpenAPI docs: `http://localhost:8080/v3/api-docs`
 
-### User Controller
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| `POST` | `/login` | none | Returns `{token, username, userId, expiresAt}` |
+| `POST` | `/users` | none | Anyone can create `CUSTOMER`; `ADMIN` can create any role |
+| `GET` | `/users?page=&size=` | JWT, `ADMIN` only | Paginated list, zero-indexed `page` (default 0), `size` default 10 |
+| `GET` | `/users/{id}` | JWT | Self or `ADMIN` |
+| `PUT` | `/users` | JWT | Self (not own role) or `ADMIN` (any field) |
+| `DELETE` | `/users/{id}` | JWT | Self or `ADMIN`; soft delete |
 
-#### GET /users
-
-*   **Summary:** Get all users. <b>Administrators only.</b>
-*   **Description:** Returns a <b>paginated list</b> of all users.
-*   **Operation ID:** `getUsers`
-*   **Tags:** `user-controller`
-*   **Query Parameters:**
-    *   `page` (optional, integer) - Page index, default 0.
-    *   `size` (optional, integer) - Page size, default 10.
-*   **Responses:**
-    *   `200 OK`: Users retrieved successfully. Returns an array of <b>UserDtoResponse</b> objects.
-
-#### PUT /users
-
-*   **Summary:** Update user content. <b>Only admin can change other users. User can change itself, except for role.</b>
-*   **Description:** Updates user data.
-*   **Operation ID:** `updateUser`
-*   **Tags:** `user-controller`
-*   **Request Body:** `application/json` with schema <b>UserDtoRequest</b>
-*   **Responses:**
-    *   `200 OK`: User updated successfully. Returns a <b>UserDtoResponse</b> object.
-
-#### POST /users
-
-*   **Summary:** Create a new user.<b> Anyone can create a CUSTOMER user. Admin can create any role.</b>
-*   **Description:** Creates a new user.
-*   **Operation ID:** `createUser`
-*   **Tags:** `user-controller`
-*   **Request Body:** `application/json` with schema <b>UserDtoRequest</b>
-*   **Responses:**
-    *   `201 Created`: User created successfully. Returns a <b>UserDtoResponse</b> object.
-
-#### GET /users/{user_id}
-
-*   **Summary:** Get user by ID. <b>User can only get their own data. Admin can get any user.</b>
-*   **Description:** Returns a user by their <b>UUID</b>.
-*   **Operation ID:** `getUser`
-*   **Tags:** `user-controller`
-*   **Parameters:**
-    *   `user_id` (path, required): <b>string (UUID)</b>
-*   **Responses:**
-    *   `200 OK`: User retrieved successfully. Returns a <b>UserDtoResponse</b> object.
-
-#### DELETE /users/{user_id}
-
-*   **Summary:** Deletes a user. <b>Only admin can delete other users. User can delete themselves.</b>
-*   **Description:** Soft deletes a user (by unique identifier).
-*   **Operation ID:** `deleteUser`
-*   **Tags:** `user-controller`
-*   **Parameters:**
-    *   `user_id` (path, required): <b>string (UUID)</b>
-*   **Responses:**
-    *   `204 No Content`: User deleted successfully.
-
-### Auth Controller
-
-#### POST /login
-
-*   **Summary:** Logs in a user.
-*   **Operation ID:** `login`
-*   **Tags:** `auth-controller`
-*   **Request Body:** `application/json` with schema <b>LoginRequestDTO</b>
-*   **Responses:**
-    *   `200 OK`: Returns a <b>LoginResponse</b> object.
-
-## Schemas
-
-### UserDtoRequest
-
-``` json
-{
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "string",
-      "format": "uuid"
-    },
-    "name": {
-      "type": "string"
-    },
-    "email": {
-      "type": "string"
-    },
-    "username": {
-      "type": "string"
-    },
-    "password": {
-      "type": "string"
-    },
-    "role": {
-      "type": "string"
-    },
-    "address": {
-      "$ref": "#/components/schemas/AddressDto"
-    }
-  }
-}
-```
-
-### UserDtoResponse
-
-```
-{
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "string",
-      "format": "uuid"
-    },
-    "name": {
-      "type": "string"
-    },
-    "email": {
-      "type": "string"
-    },
-    "username": {
-      "type": "string"
-    },
-    "role": {
-      "type": "string"
-    },
-    "createdAt": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "modifiedAt": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "address": {
-      "$ref": "#/components/schemas/AddressDto"
-    }
-  }
-}
-```
-
-### AddressDto
-
-``` json
-{
-  "type": "object",
-  "properties": {
-    "id": { "type": "string", "format": "uuid" },
-    "street": { "type": "string" },
-    "number": { "type": "string" },
-    "complement": { "type": "string" },
-    "city": { "type": "string" },
-    "state": { "type": "string" }
-  }
-}
-```
-
-### LoginRequestDTO
-
-``` json
-{
-  "type": "object",
-  "properties": {
-    "username": { "type": "string" },
-    "password": { "type": "string" }
-  }
-}
-```
-### LoginResponse
+### Request/response shapes
 
 ```json
+// UserDtoRequest
 {
-  "type": "object",
-  "properties": {
-    "token": { "type": "string" },
-    "username": { "type": "string" },
-    "userId": { "type": "string" },
-    "expiresAt": { "type": "string" }
-  }
+  "id": "uuid (omit on create)",
+  "name": "string", "email": "string", "username": "string",
+  "password": "string", "role": "ADMIN|RESTAURANT_OWNER|CUSTOMER",
+  "address": { "street": "", "number": "", "complement": "", "city": "", "state": "" }
 }
+
+// UserDtoResponse
+{
+  "id": "uuid", "name": "", "email": "", "username": "", "role": "",
+  "createdAt": "ISO-8601", "modifiedAt": "ISO-8601",
+  "address": { "id": "uuid", "street": "", "number": "", "complement": "", "city": "", "state": "" }
+}
+
+// LoginRequestDTO / LoginResponse
+{ "username": "", "password": "" }
+{ "token": "", "username": "", "userId": "", "expiresAt": "" }
 ```
 
-# 🥡 <b>WeFood - Postman API Collection Documentation</b>
+## Project structure
 
-This API supports typical <b>user management operations</b> (login, create user, update, delete, etc.) for two roles: <code>ADMIN</code> and <code>USER</code>. The list below explains how each call works, what you have to provide, and what you'll get back.
-
--------------------------------------------------------------
-## 🤖 SECTION 1: AS ADMIN 
-
-### 1. [ADMIN] Login
-- Endpoint: POST /login
-- Description: Authenticates as admin user, returning a JWT token in the response.
-- Request Body Example:
-  {
-  "username": "admin",
-  "password": "Password1@"
-  }
-- Usage: Use this call first. The token from the response will be stored in a Postman variable <code>jwt_admin</code> to be used in the following admin requests.
-- Response:
-  {
-  "token": "(JWT_HERE)",
-  "username": "admin",
-  "expiresAt": "...",
-  "userId": "(UUID)"
-  }
-
-### 2. [ADMIN] Create Customer
-- Endpoint: POST /users
-- Auth: Bearer token {{jwt_admin}}
-- Description: Admin creates a new CUSTOMER user.
-- Request Body Example:
-  {
-  "name": "John Doe",
-  "email": "john@doe.com.br",
-  "username": "johnny",
-  "password": "Password1@",
-  "role": "CUSTOMER",
-  "address": {
-  "street": "Baker Street",
-  "number": "221B",
-  "complement": "",
-  "city": "London",
-  "state": "BL"
-  }
-  }
-- Result: Returns the created user (with id and address).
-
-### 3. [ADMIN] Create Restaurant Owner
-- Endpoint: POST /users
-- Auth: Bearer token {{jwt_admin}}
-- Description: Admin creates a new RESTAURANT_OWNER user.
-- Request: Like above, but role is RESTAURANT_OWNER.
-- Result: Returns the created restaurant owner user.
-
-### 4. [ADMIN] Create Admin
-- Endpoint: POST /users
-- Auth: Bearer token {{jwt_admin}}
-- Description: Admin creates another admin.
-- Request: Like above, but role is ADMIN.
-- Result: Returns new admin.
-
-### 5. [ADMIN] Get All Users
-- Endpoint: GET /users?page=0&size=10
-- Auth: Bearer token {{jwt_admin}}
-- Description: Admin retrieves a paginated list of all users.
-- Params:
-  page: Zero-based page index (default 0);
-  size: Page size (default 10).
-- Result: Array of user info (paginated).
-
-### 6. [ADMIN] Get User From Id
-- Endpoint: GET /users/:id
-- Auth: Bearer token {{jwt_admin}}
-- Description: Admin retrieves a user by specific UUID id.
-- Path: Replace :id with user's UUID.
-- Result: The user object for matching id.
-
-### 7. [USER] Update User
-- Endpoint: PUT /users
-- Auth: Bearer token {{jwt_admin}}
-- Description: Admin updates an existing user.
-- Request Body Example:
-  {
-  "id": "4fd90a00-27ea-4c05-afd6-ba3e9d5cc33e",
-  "name": "John DoeX",
-  "email": "john@doe.com.br",
-  "username": "johnny",
-  "password": "Password1@",
-  "role": "CUSTOMER",
-  "address": {
-  "street": "Baker Street",
-  "number": "221B",
-  "complement": "",
-  "city": "London",
-  "state": "BL"
-  }
-  }
-- Result: Returns the updated user info.
-
-### 8. [USER] Delete User
-- Endpoint: DELETE /users/:id
-- Auth: Bearer token {{jwt_admin}}
-- Description: Admin deletes a user by UUID.
-- Body: Often not needed for DELETE (UUID is in path).
-- Result: 204 No Content if successful.
-
--------------------------------------------------------------
-## 👨🏻‍💼 SECTION 2: AS USER
-
-### 1. [USER] Create User
-- Endpoint: POST /users
-- Auth: None
-- Description: Anyone can register a new CUSTOMER.
-- Request Body Example:
-  {
-  "name": "Jane",
-  "email": "jane@uol.com.br",
-  "username": "jane",
-  "password": "Password1@",
-  "role": "CUSTOMER",
-  "address": {
-  "street": "Baker Street",
-  "number": "221C",
-  "complement": "Apt 2",
-  "city": "London",
-  "state": "BL"
-  }
-  }
-- Result: Returns the created user object.
-
-### 2. [USER] Login
-- Endpoint: POST /login
-- Auth: None
-- Description: Logs in as a regular user, returns a JWT as response.
-- Request:
-  {
-  "username": "jane",
-  "password": "Password1@"
-  }
-- Result: Response with JWT token (stored as jwt_user).
-
-### 3. [USER] Get All Users (ERROR)
-- Endpoint: GET /users
-- Auth: Bearer token {{jwt_user}}
-- Description: Not allowed for regular users. Will return an error (403 Forbidden).
-
-### 4. [USER] Get User From Id
-- Endpoint: GET /users/:id
-- Auth: Bearer token {{jwt_user}}
-- Description: Gets a user's own info (OK only if UUID matches the logged-in user; 403 for others).
-- Result: Returns user info.
-
-### 5. [USER] Update User
-- Endpoint: PUT /users
-- Auth: Bearer token {{jwt_user}}
-- Description: User updates their own info.
-- Request: Must include id and all relevant user information.
-- Result: Returns updated user info.
-
-### 6. [USER] Delete User
-- Endpoint: DELETE /users/:id
-- Auth: Bearer token {{jwt_user}}
-- Description: User deletes themselves.
-- Result: 204 No Content if successful.
-
--------------------------------------------------------------
-## ⚠️ SECTION 3: ERROR (Generic) 
-
-- Any call with ERROR in the name simulates unauthorized/invalid usage.
-- Expect 401/403/409, depending on the scenario.
-
--------------------------------------------------------------
-## 🔡 DATA FORMAT SUMMARY
-
-- Create/Update User: All user info + nested address.
-- Login: Username and password.
-- Token: Returned on login, used as Bearer in Authorization header for other requests.
-
--------------------------------------------------------------
-## 🔀 TYPICAL FLOW
-
-### Admin:
-1. Login as admin (/login)
-2. Use jwt_admin to create users, get all users, update, delete.
-
-### User:
-1. Register (/users)
-2. Login (/login) → get jwt_user
-3. Get/update/delete own account using token
-
--------------------------------------------------------------
-## 💬 COMMON RESPONSE BODIES
-
-- Success:
-  User object: id, name, email, username, role, address:{...}
-- Login success:
-  token, username, expiresAt, userId
-- Error:
-  status, error, message, path
-
--------------------------------------------------------------
-## ❗ Tips
-
-- Always use the correct Bearer token (jwt_admin or jwt_user) when calling protected endpoints.
-- User endpoints (except registration and login) require JWT.
-- Admin can do everything; user can only manage themselves.
-- For update or delete, always use correct id in the path and body.
-
-## 💡 TODO
-
-### 📖 Documentation
-
-- Document **JWT structure** (header, claims, signature).
-
-### 🧪 Testing & Quality
-
-- Include a **code coverage badge/instructions**.
-- Add **sample integration tests** (especially for authentication/user management).
+```
+src/main/java/br/com/fiap/wefood/
+├── adapters/
+│   ├── inbound/controller/      AuthController, UserController (REST)
+│   └── outbound/
+│       ├── password/            PasswordEncoder interface + BCrypt adapter
+│       └── repositories/        JpaUserRepository, UserRepositoryImpl, JPA entities
+├── application/usecases/        UserUseCase / UserUsecaseImpl - the business rules
+├── domain/user/                 User, Address, Role - no framework imports
+├── dto/                         Request/response DTOs
+├── infrastructure/
+│   ├── config/                  SwaggerConfig, AdminUserInitializer
+│   └── exceptions/              GlobalExceptionHandler + domain exceptions
+├── security/                    JWT filter/util, SecurityConfig, SecurityUtil
+└── utils/mapper/                Domain <-> DTO <-> entity mappers
+```

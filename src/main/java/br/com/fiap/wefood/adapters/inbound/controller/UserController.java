@@ -39,7 +39,7 @@ public class UserController {
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<UserDtoResponse>> getUsers(@RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size) {
-        page = page == null ? 1 : page;
+        page = page == null ? 0 : page;
         size = size == null ? 10 : size;
         List<User> users = userUseCase.getUsers(page, size);
         List<UserDtoResponse> usersDtoResponse = users.stream()

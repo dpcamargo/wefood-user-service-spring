@@ -1,6 +1,7 @@
 package br.com.fiap.wefood.security;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -33,13 +34,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String authHeader = request.getHeader("Authorization");
 
         // UNAUTHENTICATED REQUEST
-        if (authHeader == null) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
         String token = authHeader.substring(7);
-        Claims claims = jwtUtil.extractClaims(token);
+
+        // A malformed, expired or otherwise invalid token must not crash the
+        // filter chain with an uncaught exception (which would surface as a
+        // 500 Internal Server Error instead of the intended 401
+        // Unauthorized). Treat it the same as "no credentials supplied" and
+        // let downstream authorization decide whether the endpoint requires
+        // authentication.
+        Claims claims;
+        try {
+            claims = jwtUtil.extractClaims(token);
+        } catch (JwtException | IllegalArgumentException e) {
+            filterChain.doFilter(request, response);
+            return;
+        }
         String username = jwtUtil.extractUsername(claims);
 
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {

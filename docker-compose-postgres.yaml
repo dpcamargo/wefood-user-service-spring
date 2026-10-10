@@ -7,6 +7,8 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=postgres
       - DB_HOST=db
+      - JWT_SECRET
+      - ADMIN_PASSWORD
     depends_on:
       - db
 
